@@ -1,8 +1,8 @@
 Flask
-pandas==2.0.3
-scikit-learn==1.2.2
+pandas
+scikit-learn
 numpy
 Werkzeug
-streamlit==1.28.0
+streamlit
 requests
 httpx
