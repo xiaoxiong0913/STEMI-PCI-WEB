@@ -23,11 +23,11 @@ try:
     if not isinstance(scaler, StandardScaler):
         raise ValueError("Loaded scaler is not an instance of StandardScaler.")
 
-    # Load feature list - replace spaces with underscores
+    # Load feature list
     with open(features_path, 'r') as f:
-        features = [line.strip().replace(" ", "_") for line in f.readlines()]
-        
-    # Debugging: print loaded features
+        features = f.read().splitlines()
+    
+    # 打印特征列表以进行调试
     st.sidebar.write("Loaded features:", features)
 
 except Exception as e:
@@ -138,11 +138,8 @@ normal_ranges = {
     'AST': (10, 40),  # Normal AST range (U/L)
 }
 
-# Updated feature list with underscores
-features = [
-    'Age', 'Hb', 'AST', 'Respiratory_support', 'Beta_blocker',
-    'Cardiotonics', 'Statins', 'Stent_for_IRA'
-]
+# 修复特征名称 - 替换空格为下划线
+corrected_features = [f.replace(' ', '_') for f in features]
 
 with st.sidebar:
     st.write("## Patient Parameters")
@@ -161,79 +158,67 @@ with st.sidebar:
         inputs['Statins'] = st.selectbox("Statins at discharge", ["No", "Yes"])
 
         # Three-category variable: Stent for IRA
-        stent_options = ["No stent", "Drug-eluting stent (DES)", "Bare-metal stent (BMS)"]
-        inputs['Stent_for_IRA'] = st.selectbox("Stent for infarct-related artery", stent_options)
+        stent_options = ["0 - No stent", "1 - Drug-eluting stent (DES)", "2 - Bare-metal stent (BMS)"]
+        selected_stent = st.selectbox("Stent for infarct-related artery", stent_options)
+        inputs['Stent_for_IRA'] = int(selected_stent.split(' ')[0])
 
         submitted = st.form_submit_button("Predict Risk")
 
 # Process prediction
 if submitted:
     try:
-        # Data preprocessing
-        input_data = {}
-        for k, v in inputs.items():
-            if k == 'Stent_for_IRA':
-                # Map stent options to numerical values
-                stent_mapping = {
-                    "No stent": 0,
-                    "Drug-eluting stent (DES)": 1,
-                    "Bare-metal stent (BMS)": 2
-                }
-                input_data[k] = stent_mapping[v]
-            elif isinstance(v, str):
-                input_data[k] = 1 if v == "Yes" else 0
-            else:
-                input_data[k] = v
-
-        # Debug: Print input data keys
-        st.sidebar.write("Input data keys:", list(input_data.keys()))
+        # 打印输入数据以供调试
+        st.sidebar.write("Input data:", inputs)
         
-        # Create DataFrame with correct feature order
-        df = pd.DataFrame([input_data], columns=features)
+        # 创建DataFrame - 使用修正后的特征名称
+        df = pd.DataFrame([inputs], columns=corrected_features)
         
-        # Debug: Print DataFrame columns
-        st.sidebar.write("DataFrame columns:", list(df.columns))
+        # 打印DataFrame以供调试
+        st.sidebar.write("DataFrame before scaling:", df)
         
-        # Apply scaling
+        # 打印缩放器特征以供调试
+        if hasattr(scaler, 'feature_names_in_'):
+            st.sidebar.write("Scaler expects features:", scaler.feature_names_in_)
+        
+        # 应用缩放
         df_scaled = scaler.transform(df)
-
-        # Predict probability
+        
+        # 预测概率
         prob = model.predict_proba(df_scaled)[:, 1][0]
-        risk_status = "High Risk" if prob >= 0.147 else "Low Risk"
+        risk_threshold = 0.147
+        risk_status = "High Risk" if prob >= risk_threshold else "Low Risk"
         color = "#dc3545" if risk_status == "High Risk" else "#28a745"
 
-        # Risk message
+        # 风险消息
         risk_message = "High risk of mortality within 3 years." if risk_status == "High Risk" else "Low risk of mortality within 3 years."
 
-        # Check for abnormal values and highlight them
+        # 检查异常值并高亮显示
         abnormal_vars = []
         advice = []
 
         for var, value in inputs.items():
-            # Use original names for display purposes
-            display_var = var.replace('_', ' ')
-            if display_var in normal_ranges:
-                lower, upper = normal_ranges[display_var]
+            if var in normal_ranges:
+                lower, upper = normal_ranges[var]
                 if value < lower or value > upper:
-                    abnormal_vars.append(display_var)
-                    # Add the advice message
-                    if display_var == 'Hb':
+                    abnormal_vars.append(var)
+                    # 添加建议消息
+                    if var == 'Hb':
                         if value < lower:
                             advice.append(
                                 f"<b>Hemoglobin ({value} g/L)</b>: Below normal range (130-175 g/L). Consider anemia workup and iron studies.")
                         else:
                             advice.append(
                                 f"<b>Hemoglobin ({value} g/L)</b>: Above normal range (130-175 g/L). Evaluate for polycythemia.")
-                    elif display_var == 'AST':
+                    elif var == 'AST':
                         if value > upper:
                             advice.append(
                                 f"<b>AST ({value} U/L)</b>: Elevated above normal (10-40 U/L). May indicate ongoing myocardial injury or liver dysfunction.")
-                    elif display_var == 'Age':
+                    elif var == 'Age':
                         if value > 75:
                             advice.append(
                                 f"<b>Age ({value} years)</b>: Advanced age is an independent risk factor for adverse outcomes in STEMI.")
 
-        # Display results
+        # 显示结果
         st.markdown(f"""
         <div class='result-card'>
             <h2 style='color:{color};'>Predicted 3-Year Mortality Risk: {prob * 100:.1f}% ({risk_status})</h2>
@@ -241,7 +226,7 @@ if submitted:
         </div>
         """, unsafe_allow_html=True)
 
-        # Display abnormal variables with advice
+        # 显示带有建议的异常变量
         if abnormal_vars:
             st.markdown("<h4 style='color: red;'>Clinical Advisory:</h4>", unsafe_allow_html=True)
             st.markdown("<p style='color: red;'>Abnormal parameters detected requiring attention:</p>",
@@ -250,8 +235,8 @@ if submitted:
                 st.markdown(f"<p>{adv}</p>", unsafe_allow_html=True)
 
     except Exception as e:
-        st.error(f"Prediction error: {str(e)}")
         import traceback
+        st.error(f"Prediction error: {str(e)}")
         st.text(traceback.format_exc())
 
 # Footer
