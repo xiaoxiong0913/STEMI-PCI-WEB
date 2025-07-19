@@ -23,9 +23,10 @@ try:
     if not isinstance(scaler, StandardScaler):
         raise ValueError("Loaded scaler is not an instance of StandardScaler.")
 
-    # Load feature list
+    # Load feature list and replace spaces with underscores
     with open(features_path, 'r') as f:
         features = f.read().splitlines()
+        features = [feature.replace(" ", "_") for feature in features]  # Fix feature names
 
 except Exception as e:
     st.error(f"Error loading model, scaler, or features: {e}")
@@ -135,8 +136,7 @@ normal_ranges = {
     'AST': (10, 40),  # Normal AST range (U/L)
 }
 
-# 修正特征名称匹配问题
-# 使用与训练集完全一致的名称
+# Corrected feature names (with underscores)
 features = [
     'Age', 'Hb', 'AST', 'Respiratory_support', 'Beta_blocker',
     'Cardiotonics', 'Statins', 'Stent_for_IRA'
@@ -152,21 +152,17 @@ with st.sidebar:
         inputs['Hb'] = st.slider("Hemoglobin (g/L)", 60, 200, 130)
         inputs['AST'] = st.slider("AST (U/L)", 5, 600, 30)
 
-        # Binary categorical variables
+        # Binary categorical variables (with corrected names)
         inputs['Respiratory_support'] = st.selectbox("Respiratory support", ["No", "Yes"])
         inputs['Beta_blocker'] = st.selectbox("Beta blocker at discharge", ["No", "Yes"])
         inputs['Cardiotonics'] = st.selectbox("Cardiotonics use", ["No", "Yes"])
         inputs['Statins'] = st.selectbox("Statins at discharge", ["No", "Yes"])
 
-        # 修改Stent选项为0,1,2数值选择
-        st.write("Stent for infarct-related artery")
-        stent_option = st.radio("", 
-                               ["0: No stent", 
-                                "1: Drug-eluting stent (DES)", 
-                                "2: Bare-metal stent (BMS)"],
-                               horizontal=True,
-                               label_visibility="collapsed")
-        inputs['Stent_for_IRA'] = int(stent_option.split(":")[0])
+        # Stent for IRA with numerical options
+        stent_options = ["No stent (0)", "Drug-eluting stent (1)", "Bare-metal stent (2)"]
+        selected_stent = st.selectbox("Stent for infarct-related artery", stent_options)
+        # Map selection to numerical value
+        inputs['Stent_for_IRA'] = int(selected_stent.split("(")[1].replace(")", ""))
 
         submitted = st.form_submit_button("Predict Risk")
 
