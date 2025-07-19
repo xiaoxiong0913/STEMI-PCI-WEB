@@ -23,10 +23,9 @@ try:
     if not isinstance(scaler, StandardScaler):
         raise ValueError("Loaded scaler is not an instance of StandardScaler.")
 
-    # Load feature list and replace spaces with underscores
+    # Load feature list and convert to underscore format
     with open(features_path, 'r') as f:
-        features = f.read().splitlines()
-        features = [feature.replace(" ", "_") for feature in features]  # Fix feature names
+        features = [line.strip().replace(' ', '_') for line in f]
 
 except Exception as e:
     st.error(f"Error loading model, scaler, or features: {e}")
@@ -136,12 +135,6 @@ normal_ranges = {
     'AST': (10, 40),  # Normal AST range (U/L)
 }
 
-# Corrected feature names (with underscores)
-features = [
-    'Age', 'Hb', 'AST', 'Respiratory_support', 'Beta_blocker',
-    'Cardiotonics', 'Statins', 'Stent_for_IRA'
-]
-
 with st.sidebar:
     st.write("## Patient Parameters")
     with st.form("input_form"):
@@ -152,17 +145,15 @@ with st.sidebar:
         inputs['Hb'] = st.slider("Hemoglobin (g/L)", 60, 200, 130)
         inputs['AST'] = st.slider("AST (U/L)", 5, 600, 30)
 
-        # Binary categorical variables (with corrected names)
+        # Binary categorical variables
         inputs['Respiratory_support'] = st.selectbox("Respiratory support", ["No", "Yes"])
         inputs['Beta_blocker'] = st.selectbox("Beta blocker at discharge", ["No", "Yes"])
         inputs['Cardiotonics'] = st.selectbox("Cardiotonics use", ["No", "Yes"])
         inputs['Statins'] = st.selectbox("Statins at discharge", ["No", "Yes"])
 
-        # Stent for IRA with numerical options
-        stent_options = ["No stent (0)", "Drug-eluting stent (1)", "Bare-metal stent (2)"]
-        selected_stent = st.selectbox("Stent for infarct-related artery", stent_options)
-        # Map selection to numerical value
-        inputs['Stent_for_IRA'] = int(selected_stent.split("(")[1].replace(")", ""))
+        # Three-category variable: Stent_for_IRA
+        stent_options = ["No stent", "Drug-eluting stent (DES)", "Bare-metal stent (BMS)"]
+        inputs['Stent_for_IRA'] = st.selectbox("Stent for infarct-related artery", stent_options)
 
         submitted = st.form_submit_button("Predict Risk")
 
@@ -172,7 +163,15 @@ if submitted:
         # Data preprocessing
         input_data = {}
         for k, v in inputs.items():
-            if isinstance(v, str):
+            if k == 'Stent_for_IRA':
+                # Map stent options to numerical values
+                stent_mapping = {
+                    "No stent": 0,
+                    "Drug-eluting stent (DES)": 1,
+                    "Bare-metal stent (BMS)": 2
+                }
+                input_data[k] = stent_mapping[v]
+            elif isinstance(v, str):
                 input_data[k] = 1 if v == "Yes" else 0
             else:
                 input_data[k] = v
@@ -195,27 +194,40 @@ if submitted:
         abnormal_vars = []
         advice = []
 
+        # Create mapping from underscore names back to display names
+        display_names = {
+            'Age': 'Age',
+            'Hb': 'Hemoglobin',
+            'AST': 'AST',
+            'Respiratory_support': 'Respiratory support',
+            'Beta_blocker': 'Beta blocker',
+            'Cardiotonics': 'Cardiotonics',
+            'Statins': 'Statins',
+            'Stent_for_IRA': 'Stent for IRA'
+        }
+
         for var, value in inputs.items():
-            if var in normal_ranges:
+            display_name = display_names.get(var, var)
+            if var in ['Age', 'Hb', 'AST']:
                 lower, upper = normal_ranges[var]
                 if value < lower or value > upper:
-                    abnormal_vars.append(var)
+                    abnormal_vars.append(display_name)
                     # Add the advice message
                     if var == 'Hb':
                         if value < lower:
                             advice.append(
-                                f"<b>Hemoglobin ({value} g/L)</b>: Below normal range (130-175 g/L). Consider anemia workup and iron studies.")
+                                f"<b>{display_name} ({value} g/L)</b>: Below normal range (130-175 g/L). Consider anemia workup and iron studies.")
                         else:
                             advice.append(
-                                f"<b>Hemoglobin ({value} g/L)</b>: Above normal range (130-175 g/L). Evaluate for polycythemia.")
+                                f"<b>{display_name} ({value} g/L)</b>: Above normal range (130-175 g/L). Evaluate for polycythemia.")
                     elif var == 'AST':
                         if value > upper:
                             advice.append(
-                                f"<b>AST ({value} U/L)</b>: Elevated above normal (10-40 U/L). May indicate ongoing myocardial injury or liver dysfunction.")
+                                f"<b>{display_name} ({value} U/L)</b>: Elevated above normal (10-40 U/L). May indicate ongoing myocardial injury or liver dysfunction.")
                     elif var == 'Age':
                         if value > 75:
                             advice.append(
-                                f"<b>Age ({value} years)</b>: Advanced age is an independent risk factor for adverse outcomes in STEMI.")
+                                f"<b>{display_name} ({value} years)</b>: Advanced age is an independent risk factor for adverse outcomes in STEMI.")
 
         # Display results
         st.markdown(f"""
