@@ -52,7 +52,7 @@ This clinical decision support tool integrates clinical, laboratory, and procedu
 to predict 3-year mortality risk in STEMI patients after primary PCI. Validated with **AUC 0.91 (0.867-0.944)** and **93.4% accuracy**.
 """)
 
-# Clinical pathway cards...
+# Clinical pathway cards
 cols = st.columns([2, 3])
 with cols[0]:
     st.write("""
@@ -101,14 +101,13 @@ with cols[1]:
     </div>
     """, unsafe_allow_html=True)
 
-# Normal ranges
+# Define normal value ranges for continuous variables
 normal_ranges = {
     'Age': (18, 120),
     'Hb': (130, 175),
     'AST': (10, 40),
 }
 
-st.sidebar.write(f"Loaded features: {features}")
 with st.sidebar:
     st.write("## Patient Parameters")
     with st.form("input_form"):
@@ -116,80 +115,76 @@ with st.sidebar:
         inputs['Age'] = st.slider("Age (Years)", 30, 100, 65)
         inputs['Hb']  = st.slider("Hemoglobin (g/L)", 60, 200, 130)
         inputs['AST'] = st.slider("AST (U/L)", 5, 600, 30)
-        inputs['Respiratory_support'] = st.selectbox("Respiratory support", ["No","Yes"])
-        inputs['Beta_blocker']        = st.selectbox("Beta blocker at discharge", ["No","Yes"])
-        inputs['Cardiotonics']        = st.selectbox("Cardiotonics use", ["No","Yes"])
-        inputs['Statins']             = st.selectbox("Statins at discharge", ["No","Yes"])
-        stent_options = ["No stent","Drug-eluting stent (DES)","Bare-metal stent (BMS)"]
-        inputs['Stent_for_IRA']       = st.selectbox("Stent for infarct-related artery", stent_options)
+        inputs['Respiratory_support'] = st.selectbox("Respiratory support", ["No", "Yes"])
+        inputs['Beta_blocker']        = st.selectbox("Beta blocker at discharge", ["No", "Yes"])
+        inputs['Cardiotonics']        = st.selectbox("Cardiotonics use", ["No", "Yes"])
+        inputs['Statins']             = st.selectbox("Statins at discharge", ["No", "Yes"])
+        # Numeric options for Stent_for_IRA
+        inputs['Stent_for_IRA']       = st.selectbox("Stent for IRA", [0, 1, 2])
         submitted = st.form_submit_button("Predict Risk")
 
 if submitted:
     try:
-        # Map inputs to numeric
+        # Map inputs to numeric values
         input_data = {}
         for k, v in inputs.items():
-            if k == 'Stent_for_IRA':
-                mapping = {"No stent":0,"Drug-eluting stent (DES)":1,"Bare-metal stent (BMS)":2}
-                input_data[k] = mapping[v]
-            elif isinstance(v, str):
-                input_data[k] = 1 if v=="Yes" else 0
+            if isinstance(v, str):
+                input_data[k] = 1 if v == "Yes" else 0
             else:
                 input_data[k] = v
 
-        # Build full DataFrame
+        # Build DataFrame in feature order
         df = pd.DataFrame([input_data], columns=features)
 
-        # —— 关键修改 —— 
-        # 1) 只对训练时 fit 的连续变量做 scale
-        cont_features = list(scaler.feature_names_in_)  # ['Age','Hb','AST']
-        df_cont = df[cont_features]
+        # Scale only the continuous features
+        cont_feats = list(scaler.feature_names_in_)  # ['Age','Hb','AST']
+        df_cont = df[cont_feats]
         df_cont_scaled = scaler.transform(df_cont)
 
-        # 2) 保留其余分类变量，拼回去
-        df_cat = df.drop(columns=cont_features)
+        # Concatenate scaled continuous and raw categorical/numeric features
+        df_cat = df.drop(columns=cont_feats)
         X = np.hstack([df_cont_scaled, df_cat.values])
 
-        # 3) 预测
-        prob = model.predict_proba(X)[:,1][0]
-        risk_status = "High Risk" if prob>=0.147 else "Low Risk"
-        color = "#dc3545" if risk_status=="High Risk" else "#28a745"
-        risk_message = ("High risk of mortality within 3 years."
-                        if risk_status=="High Risk"
-                        else "Low risk of mortality within 3 years.")
+        # Predict
+        prob = model.predict_proba(X)[:, 1][0]
+        risk_status = "High Risk" if prob >= 0.147 else "Low Risk"
+        color = "#dc3545" if risk_status == "High Risk" else "#28a745"
+        risk_message = (
+            "High risk of mortality within 3 years."
+            if risk_status == "High Risk"
+            else "Low risk of mortality within 3 years."
+        )
 
-        # 检查并提示异常值
-        abnormal = []
+        # Check for abnormal values
         advice = []
         display_names = {
-            'Age':'Age','Hb':'Hemoglobin','AST':'AST',
-            'Respiratory_support':'Respiratory support',
-            'Beta_blocker':'Beta blocker','Cardiotonics':'Cardiotonics',
-            'Statins':'Statins','Stent_for_IRA':'Stent for IRA'
+            'Age': 'Age', 'Hb': 'Hemoglobin', 'AST': 'AST',
+            'Respiratory_support': 'Respiratory support',
+            'Beta_blocker': 'Beta blocker', 'Cardiotonics': 'Cardiotonics',
+            'Statins': 'Statins', 'Stent_for_IRA': 'Stent for IRA'
         }
         for var, val in inputs.items():
             if var in normal_ranges:
                 lo, hi = normal_ranges[var]
-                if val<lo or val>hi:
-                    if var=='Hb' and val<lo:
-                        advice.append(f"<b>{display_names[var]} ({val} g/L)</b>: Below normal (130–175). Consider anemia workup.")
-                    elif var=='Hb' and val>hi:
-                        advice.append(f"<b>{display_names[var]} ({val} g/L)</b>: Above normal. Evaluate for polycythemia.")
-                    if var=='AST' and val>hi:
-                        advice.append(f"<b>AST ({val} U/L)</b>: Elevated (>40). May indicate myocardial injury.")
-                    if var=='Age' and val>75:
-                        advice.append(f"<b>Age ({val})</b>: Advanced age is an independent risk factor.")
+                if val < lo or val > hi:
+                    if var == 'Hb' and val < lo:
+                        advice.append(f"<b>{display_names[var]} ({val} g/L)</b>: Below normal range (130–175). Consider anemia workup.")
+                    elif var == 'Hb' and val > hi:
+                        advice.append(f"<b>{display_names[var]} ({val} g/L)</b>: Above normal range. Evaluate for polycythemia.")
+                    if var == 'AST' and val > hi:
+                        advice.append(f"<b>{display_names[var]} ({val} U/L)</b>: Elevated above normal (10–40). May indicate myocardial injury.")
+                    if var == 'Age' and val > 75:
+                        advice.append(f"<b>{display_names[var]} ({val} years)</b>: Advanced age is an independent risk factor.")
 
-        # 输出结果
+        # Display result
         st.markdown(f"""
         <div class='result-card'>
-            <h2 style='color:{color};'>
-              Predicted 3-Year Mortality Risk: {prob*100:.1f}% ({risk_status})
-            </h2>
+            <h2 style='color:{color};'>Predicted 3-Year Mortality Risk: {prob*100:.1f}% ({risk_status})</h2>
             <p>{risk_message}</p>
         </div>
         """, unsafe_allow_html=True)
 
+        # Display clinical advice if any
         if advice:
             st.markdown("<h4 style='color:red;'>Clinical Advisory:</h4>", unsafe_allow_html=True)
             for a in advice:
@@ -203,6 +198,6 @@ if submitted:
 st.write("---")
 st.write(
     "<div style='text-align:center; color:gray;'>"
-    "Developed according to ESC 2023 STEMI Guidelines</div>",
+    "Developed by Yichang Central People's Hospital</div>",
     unsafe_allow_html=True
 )
