@@ -23,12 +23,9 @@ try:
     if not isinstance(scaler, StandardScaler):
         raise ValueError("Loaded scaler is not an instance of StandardScaler.")
 
-    # Load feature list
+    # Load feature list - replace spaces with underscores
     with open(features_path, 'r') as f:
-        features = f.read().splitlines()
-    
-    # Convert features to underscore format to match model expectations
-    features = [feature.replace(" ", "_") for feature in features]
+        features = [line.strip().replace(" ", "_") for line in f]
 
 except Exception as e:
     st.error(f"Error loading model, scaler, or features: {e}")
@@ -138,35 +135,37 @@ normal_ranges = {
     'AST': (10, 40),  # Normal AST range (U/L)
 }
 
+# Debug: Print loaded features
+st.sidebar.write(f"Loaded features: {features}")
+
 with st.sidebar:
     st.write("## Patient Parameters")
     with st.form("input_form"):
         inputs = {}
-        
-        # Helper function to create display name with underscore replacement
-        def display_name(name):
-            return name.replace("_", " ")
 
         # Continuous variables with normal ranges
         inputs['Age'] = st.slider("Age (Years)", 30, 100, 65)
         inputs['Hb'] = st.slider("Hemoglobin (g/L)", 60, 200, 130)
         inputs['AST'] = st.slider("AST (U/L)", 5, 600, 30)
 
-        # Binary categorical variables - use underscore names internally
-        inputs['Respiratory_support'] = st.selectbox(display_name("Respiratory_support"), ["No", "Yes"])
-        inputs['Beta_blocker'] = st.selectbox(display_name("Beta_blocker at discharge"), ["No", "Yes"])
-        inputs['Cardiotonics'] = st.selectbox(display_name("Cardiotonics use"), ["No", "Yes"])
-        inputs['Statins'] = st.selectbox(display_name("Statins at discharge"), ["No", "Yes"])
+        # Binary categorical variables - using underscore names internally
+        inputs['Respiratory_support'] = st.selectbox("Respiratory support", ["No", "Yes"])
+        inputs['Beta_blocker'] = st.selectbox("Beta blocker at discharge", ["No", "Yes"])
+        inputs['Cardiotonics'] = st.selectbox("Cardiotonics use", ["No", "Yes"])
+        inputs['Statins'] = st.selectbox("Statins at discharge", ["No", "Yes"])
 
         # Three-category variable: Stent for IRA
         stent_options = ["No stent", "Drug-eluting stent (DES)", "Bare-metal stent (BMS)"]
-        inputs['Stent_for_IRA'] = st.selectbox(display_name("Stent_for_IRA"), stent_options)
+        inputs['Stent_for_IRA'] = st.selectbox("Stent for infarct-related artery", stent_options)
 
         submitted = st.form_submit_button("Predict Risk")
 
 # Process prediction
 if submitted:
     try:
+        # Debug: Print input keys
+        st.write(f"Input keys: {list(inputs.keys())}")
+        
         # Data preprocessing
         input_data = {}
         for k, v in inputs.items():
@@ -183,12 +182,16 @@ if submitted:
             else:
                 input_data[k] = v
 
+        # Debug: Print processed data
+        st.write("Processed data:")
+        st.json(input_data)
+
         # Create DataFrame with correct feature order
         df = pd.DataFrame([input_data], columns=features)
-
-        # Debugging: display processed data
-        st.write("Processed data:", input_data)
-        st.write("DataFrame columns:", df.columns.tolist())
+        
+        # Debug: Print DataFrame columns
+        st.write("DataFrame columns:")
+        st.write(df.columns.tolist())
 
         # Apply scaling
         df_scaled = scaler.transform(df)
@@ -205,29 +208,39 @@ if submitted:
         abnormal_vars = []
         advice = []
 
+        # Use display names for alerts (with spaces)
+        display_names = {
+            'Age': 'Age',
+            'Hb': 'Hemoglobin',
+            'AST': 'AST',
+            'Respiratory_support': 'Respiratory support',
+            'Beta_blocker': 'Beta blocker',
+            'Cardiotonics': 'Cardiotonics',
+            'Statins': 'Statins',
+            'Stent_for_IRA': 'Stent for IRA'
+        }
+
         for var, value in inputs.items():
-            # Use display name for matching normal ranges
-            display_var = var.replace("_", " ")
-            if display_var in normal_ranges:
-                lower, upper = normal_ranges[display_var]
+            if var in ['Age', 'Hb', 'AST']:  # Only continuous variables have ranges
+                lower, upper = normal_ranges[var]
                 if value < lower or value > upper:
-                    abnormal_vars.append(display_var)
+                    abnormal_vars.append(var)
                     # Add the advice message
-                    if display_var == 'Hb':
+                    if var == 'Hb':
                         if value < lower:
                             advice.append(
-                                f"<b>Hemoglobin ({value} g/L)</b>: Below normal range (130-175 g/L). Consider anemia workup and iron studies.")
+                                f"<b>{display_names[var]} ({value} g/L)</b>: Below normal range (130-175 g/L). Consider anemia workup and iron studies.")
                         else:
                             advice.append(
-                                f"<b>Hemoglobin ({value} g/L)</b>: Above normal range (130-175 g/L). Evaluate for polycythemia.")
-                    elif display_var == 'AST':
+                                f"<b>{display_names[var]} ({value} g/L)</b>: Above normal range (130-175 g/L). Evaluate for polycythemia.")
+                    elif var == 'AST':
                         if value > upper:
                             advice.append(
-                                f"<b>AST ({value} U/L)</b>: Elevated above normal (10-40 U/L). May indicate ongoing myocardial injury or liver dysfunction.")
-                    elif display_var == 'Age':
+                                f"<b>{display_names[var]} ({value} U/L)</b>: Elevated above normal (10-40 U/L). May indicate ongoing myocardial injury or liver dysfunction.")
+                    elif var == 'Age':
                         if value > 75:
                             advice.append(
-                                f"<b>Age ({value} years)</b>: Advanced age is an independent risk factor for adverse outcomes in STEMI.")
+                                f"<b>{display_names[var]} ({value} years)</b>: Advanced age is an independent risk factor for adverse outcomes in STEMI.")
 
         # Display results
         st.markdown(f"""
