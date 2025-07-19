@@ -135,10 +135,11 @@ normal_ranges = {
     'AST': (10, 40),  # Normal AST range (U/L)
 }
 
-# Feature list (corrected)
+# 修正特征名称匹配问题
+# 使用与训练集完全一致的名称
 features = [
-    'Age', 'Hb', 'AST', 'Respiratory support', 'Beta blocker',
-    'Cardiotonics', 'Statins', 'Stent for IRA'
+    'Age', 'Hb', 'AST', 'Respiratory_support', 'Beta_blocker',
+    'Cardiotonics', 'Statins', 'Stent_for_IRA'
 ]
 
 with st.sidebar:
@@ -152,14 +153,20 @@ with st.sidebar:
         inputs['AST'] = st.slider("AST (U/L)", 5, 600, 30)
 
         # Binary categorical variables
-        inputs['Respiratory support'] = st.selectbox("Respiratory support", ["No", "Yes"])
-        inputs['Beta blocker'] = st.selectbox("Beta blocker at discharge", ["No", "Yes"])
+        inputs['Respiratory_support'] = st.selectbox("Respiratory support", ["No", "Yes"])
+        inputs['Beta_blocker'] = st.selectbox("Beta blocker at discharge", ["No", "Yes"])
         inputs['Cardiotonics'] = st.selectbox("Cardiotonics use", ["No", "Yes"])
         inputs['Statins'] = st.selectbox("Statins at discharge", ["No", "Yes"])
 
-        # Three-category variable: Stent for IRA
-        stent_options = ["No stent", "Drug-eluting stent (DES)", "Bare-metal stent (BMS)"]
-        inputs['Stent for IRA'] = st.selectbox("Stent for infarct-related artery", stent_options)
+        # 修改Stent选项为0,1,2数值选择
+        st.write("Stent for infarct-related artery")
+        stent_option = st.radio("", 
+                               ["0: No stent", 
+                                "1: Drug-eluting stent (DES)", 
+                                "2: Bare-metal stent (BMS)"],
+                               horizontal=True,
+                               label_visibility="collapsed")
+        inputs['Stent_for_IRA'] = int(stent_option.split(":")[0])
 
         submitted = st.form_submit_button("Predict Risk")
 
@@ -169,15 +176,7 @@ if submitted:
         # Data preprocessing
         input_data = {}
         for k, v in inputs.items():
-            if k == 'Stent for IRA':
-                # Map stent options to numerical values
-                stent_mapping = {
-                    "No stent": 0,
-                    "Drug-eluting stent (DES)": 1,
-                    "Bare-metal stent (BMS)": 2
-                }
-                input_data[k] = stent_mapping[v]
-            elif isinstance(v, str):
+            if isinstance(v, str):
                 input_data[k] = 1 if v == "Yes" else 0
             else:
                 input_data[k] = v
