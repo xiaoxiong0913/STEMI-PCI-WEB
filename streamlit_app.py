@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import pickle
 from sklearn.preprocessing import StandardScaler
 import warnings
@@ -11,22 +12,15 @@ model_path = r"gbm_model.pkl"
 scaler_path = r"scaler.pkl"
 features_path = r"features.txt"
 
-# Load model and scaler using pickle
 try:
     with open(model_path, 'rb') as model_file:
         model = pickle.load(model_file)
-
     with open(scaler_path, 'rb') as scaler_file:
         scaler = pickle.load(scaler_file)
-
-    # Check if scaler is an instance of StandardScaler
     if not isinstance(scaler, StandardScaler):
         raise ValueError("Loaded scaler is not an instance of StandardScaler.")
-
-    # Load feature list - replace spaces with underscores
     with open(features_path, 'r') as f:
         features = [line.strip().replace(" ", "_") for line in f]
-
 except Exception as e:
     st.error(f"Error loading model, scaler, or features: {e}")
     st.stop()
@@ -43,28 +37,11 @@ st.write("""
     margin: 10px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
-.critical-card {
-    border-left: 5px solid #dc3545;
-    background-color: #fff5f5;
-}
-.warning-card {
-    border-left: 5px solid #ffc107;
-    background-color: #fff9e6;
-}
-.green-card {
-    border-left: 5px solid #28a745;
-    background-color: #f0fff4;
-}
-.blue-card {
-    border-left: 5px solid #17a2b8;
-    background-color: #d1ecf1;
-}
-.result-card {
-    border-radius: 10px;
-    padding: 20px;
-    background-color: #f8f9fa;
-    margin: 20px 0;
-}
+.critical-card { border-left: 5px solid #dc3545; background-color: #fff5f5; }
+.warning-card  { border-left: 5px solid #ffc107; background-color: #fff9e6; }
+.green-card    { border-left: 5px solid #28a745; background-color: #f0fff4; }
+.blue-card     { border-left: 5px solid #17a2b8; background-color: #d1ecf1; }
+.result-card   { border-radius: 10px; padding: 20px; background-color: #f8f9fa; margin: 20px 0; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -75,10 +52,8 @@ This clinical decision support tool integrates clinical, laboratory, and procedu
 to predict 3-year mortality risk in STEMI patients after primary PCI. Validated with **AUC 0.91 (0.867-0.944)** and **93.4% accuracy**.
 """)
 
-# Clinical pathway cards
+# Clinical pathway cards...
 cols = st.columns([2, 3])
-
-# First column: High Risk Criteria, Laboratory Alerts, Medication Recommendations
 with cols[0]:
     st.write("""
     <div class='protocol-card critical-card'>
@@ -107,8 +82,6 @@ with cols[0]:
         </ul>
     </div>
     """, unsafe_allow_html=True)
-
-# Second column: Monitoring & Standard Protocol
 with cols[1]:
     st.write("""
     <div class='protocol-card green-card'>
@@ -128,142 +101,108 @@ with cols[1]:
     </div>
     """, unsafe_allow_html=True)
 
-# Define normal value ranges for continuous variables
+# Normal ranges
 normal_ranges = {
-    'Age': (18, 120),  # Age range
-    'Hb': (130, 175),  # Normal hemoglobin range (g/L) - male reference
-    'AST': (10, 40),  # Normal AST range (U/L)
+    'Age': (18, 120),
+    'Hb': (130, 175),
+    'AST': (10, 40),
 }
 
-# Debug: Print loaded features
 st.sidebar.write(f"Loaded features: {features}")
-
 with st.sidebar:
     st.write("## Patient Parameters")
     with st.form("input_form"):
         inputs = {}
-
-        # Continuous variables with normal ranges
         inputs['Age'] = st.slider("Age (Years)", 30, 100, 65)
-        inputs['Hb'] = st.slider("Hemoglobin (g/L)", 60, 200, 130)
+        inputs['Hb']  = st.slider("Hemoglobin (g/L)", 60, 200, 130)
         inputs['AST'] = st.slider("AST (U/L)", 5, 600, 30)
-
-        # Binary categorical variables - using underscore names internally
-        inputs['Respiratory_support'] = st.selectbox("Respiratory support", ["No", "Yes"])
-        inputs['Beta_blocker'] = st.selectbox("Beta blocker at discharge", ["No", "Yes"])
-        inputs['Cardiotonics'] = st.selectbox("Cardiotonics use", ["No", "Yes"])
-        inputs['Statins'] = st.selectbox("Statins at discharge", ["No", "Yes"])
-
-        # Three-category variable: Stent for IRA
-        stent_options = ["No stent", "Drug-eluting stent (DES)", "Bare-metal stent (BMS)"]
-        inputs['Stent_for_IRA'] = st.selectbox("Stent for infarct-related artery", stent_options)
-
+        inputs['Respiratory_support'] = st.selectbox("Respiratory support", ["No","Yes"])
+        inputs['Beta_blocker']        = st.selectbox("Beta blocker at discharge", ["No","Yes"])
+        inputs['Cardiotonics']        = st.selectbox("Cardiotonics use", ["No","Yes"])
+        inputs['Statins']             = st.selectbox("Statins at discharge", ["No","Yes"])
+        stent_options = ["No stent","Drug-eluting stent (DES)","Bare-metal stent (BMS)"]
+        inputs['Stent_for_IRA']       = st.selectbox("Stent for infarct-related artery", stent_options)
         submitted = st.form_submit_button("Predict Risk")
 
-# Process prediction
 if submitted:
     try:
-        # Debug: Print input keys
-        st.write(f"Input keys: {list(inputs.keys())}")
-        
-        # Data preprocessing
+        # Map inputs to numeric
         input_data = {}
         for k, v in inputs.items():
             if k == 'Stent_for_IRA':
-                # Map stent options to numerical values
-                stent_mapping = {
-                    "No stent": 0,
-                    "Drug-eluting stent (DES)": 1,
-                    "Bare-metal stent (BMS)": 2
-                }
-                input_data[k] = stent_mapping[v]
+                mapping = {"No stent":0,"Drug-eluting stent (DES)":1,"Bare-metal stent (BMS)":2}
+                input_data[k] = mapping[v]
             elif isinstance(v, str):
-                input_data[k] = 1 if v == "Yes" else 0
+                input_data[k] = 1 if v=="Yes" else 0
             else:
                 input_data[k] = v
 
-        # Debug: Print processed data
-        st.write("Processed data:")
-        st.json(input_data)
-
-        # Create DataFrame with correct feature order
+        # Build full DataFrame
         df = pd.DataFrame([input_data], columns=features)
-        
-        # Debug: Print DataFrame columns
-        st.write("DataFrame columns:")
-        st.write(df.columns.tolist())
 
-        # Apply scaling
-        df_scaled = scaler.transform(df)
+        # —— 关键修改 —— 
+        # 1) 只对训练时 fit 的连续变量做 scale
+        cont_features = list(scaler.feature_names_in_)  # ['Age','Hb','AST']
+        df_cont = df[cont_features]
+        df_cont_scaled = scaler.transform(df_cont)
 
-        # Predict probability
-        prob = model.predict_proba(df_scaled)[:, 1][0]
-        risk_status = "High Risk" if prob >= 0.147 else "Low Risk"
-        color = "#dc3545" if risk_status == "High Risk" else "#28a745"
+        # 2) 保留其余分类变量，拼回去
+        df_cat = df.drop(columns=cont_features)
+        X = np.hstack([df_cont_scaled, df_cat.values])
 
-        # Risk message
-        risk_message = "High risk of mortality within 3 years." if risk_status == "High Risk" else "Low risk of mortality within 3 years."
+        # 3) 预测
+        prob = model.predict_proba(X)[:,1][0]
+        risk_status = "High Risk" if prob>=0.147 else "Low Risk"
+        color = "#dc3545" if risk_status=="High Risk" else "#28a745"
+        risk_message = ("High risk of mortality within 3 years."
+                        if risk_status=="High Risk"
+                        else "Low risk of mortality within 3 years.")
 
-        # Check for abnormal values and highlight them
-        abnormal_vars = []
+        # 检查并提示异常值
+        abnormal = []
         advice = []
-
-        # Use display names for alerts (with spaces)
         display_names = {
-            'Age': 'Age',
-            'Hb': 'Hemoglobin',
-            'AST': 'AST',
-            'Respiratory_support': 'Respiratory support',
-            'Beta_blocker': 'Beta blocker',
-            'Cardiotonics': 'Cardiotonics',
-            'Statins': 'Statins',
-            'Stent_for_IRA': 'Stent for IRA'
+            'Age':'Age','Hb':'Hemoglobin','AST':'AST',
+            'Respiratory_support':'Respiratory support',
+            'Beta_blocker':'Beta blocker','Cardiotonics':'Cardiotonics',
+            'Statins':'Statins','Stent_for_IRA':'Stent for IRA'
         }
+        for var, val in inputs.items():
+            if var in normal_ranges:
+                lo, hi = normal_ranges[var]
+                if val<lo or val>hi:
+                    if var=='Hb' and val<lo:
+                        advice.append(f"<b>{display_names[var]} ({val} g/L)</b>: Below normal (130–175). Consider anemia workup.")
+                    elif var=='Hb' and val>hi:
+                        advice.append(f"<b>{display_names[var]} ({val} g/L)</b>: Above normal. Evaluate for polycythemia.")
+                    if var=='AST' and val>hi:
+                        advice.append(f"<b>AST ({val} U/L)</b>: Elevated (>40). May indicate myocardial injury.")
+                    if var=='Age' and val>75:
+                        advice.append(f"<b>Age ({val})</b>: Advanced age is an independent risk factor.")
 
-        for var, value in inputs.items():
-            if var in ['Age', 'Hb', 'AST']:  # Only continuous variables have ranges
-                lower, upper = normal_ranges[var]
-                if value < lower or value > upper:
-                    abnormal_vars.append(var)
-                    # Add the advice message
-                    if var == 'Hb':
-                        if value < lower:
-                            advice.append(
-                                f"<b>{display_names[var]} ({value} g/L)</b>: Below normal range (130-175 g/L). Consider anemia workup and iron studies.")
-                        else:
-                            advice.append(
-                                f"<b>{display_names[var]} ({value} g/L)</b>: Above normal range (130-175 g/L). Evaluate for polycythemia.")
-                    elif var == 'AST':
-                        if value > upper:
-                            advice.append(
-                                f"<b>{display_names[var]} ({value} U/L)</b>: Elevated above normal (10-40 U/L). May indicate ongoing myocardial injury or liver dysfunction.")
-                    elif var == 'Age':
-                        if value > 75:
-                            advice.append(
-                                f"<b>{display_names[var]} ({value} years)</b>: Advanced age is an independent risk factor for adverse outcomes in STEMI.")
-
-        # Display results
+        # 输出结果
         st.markdown(f"""
         <div class='result-card'>
-            <h2 style='color:{color};'>Predicted 3-Year Mortality Risk: {prob * 100:.1f}% ({risk_status})</h2>
+            <h2 style='color:{color};'>
+              Predicted 3-Year Mortality Risk: {prob*100:.1f}% ({risk_status})
+            </h2>
             <p>{risk_message}</p>
         </div>
         """, unsafe_allow_html=True)
 
-        # Display abnormal variables with advice
-        if abnormal_vars:
-            st.markdown("<h4 style='color: red;'>Clinical Advisory:</h4>", unsafe_allow_html=True)
-            st.markdown("<p style='color: red;'>Abnormal parameters detected requiring attention:</p>",
-                        unsafe_allow_html=True)
-            for adv in advice:
-                st.markdown(f"<p>{adv}</p>", unsafe_allow_html=True)
+        if advice:
+            st.markdown("<h4 style='color:red;'>Clinical Advisory:</h4>", unsafe_allow_html=True)
+            for a in advice:
+                st.markdown(f"<p style='color:red;'>{a}</p>", unsafe_allow_html=True)
 
     except Exception as e:
-        st.error(f"Prediction error: {str(e)}")
-        import traceback
-        st.text(traceback.format_exc())
+        st.error(f"Prediction error: {e}")
+        import traceback; st.text(traceback.format_exc())
 
 # Footer
 st.write("---")
-st.write("<div style='text-align: center; color: gray;'>Developed according to ESC 2023 STEMI Guidelines</div>",
-         unsafe_allow_html=True)
+st.write(
+    "<div style='text-align:center; color:gray;'>"
+    "Developed according to ESC 2023 STEMI Guidelines</div>",
+    unsafe_allow_html=True
+)
