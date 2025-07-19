@@ -2,7 +2,8 @@ Age
 Hb
 AST
 Respiratory support
-Beta blocker
+Beta_blocker
 Cardiotonics
+Respiratory_support
 Statins
-Stent for IRA
+Stent_for_IRA
