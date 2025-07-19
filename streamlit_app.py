@@ -113,7 +113,7 @@ with st.sidebar:
     with st.form("input_form"):
         inputs = {}
         inputs['Age'] = st.slider("Age (Years)", 30, 100, 65)
-        inputs['Hb']  = st.slider("Hemoglobin (g/L)", 60, 200, 130)
+        inputs['Hb']  = st.slider("Hb (g/L)", 60, 200, 130)
         inputs['AST'] = st.slider("AST (U/L)", 5, 600, 30)
         inputs['Respiratory_support'] = st.selectbox("Respiratory support", ["No", "Yes"])
         inputs['Beta_blocker']        = st.selectbox("Beta blocker", ["No", "Yes"])
