@@ -116,9 +116,9 @@ with st.sidebar:
         inputs['Hb']  = st.slider("Hemoglobin (g/L)", 60, 200, 130)
         inputs['AST'] = st.slider("AST (U/L)", 5, 600, 30)
         inputs['Respiratory_support'] = st.selectbox("Respiratory support", ["No", "Yes"])
-        inputs['Beta_blocker']        = st.selectbox("Beta blocker at discharge", ["No", "Yes"])
-        inputs['Cardiotonics']        = st.selectbox("Cardiotonics use", ["No", "Yes"])
-        inputs['Statins']             = st.selectbox("Statins at discharge", ["No", "Yes"])
+        inputs['Beta_blocker']        = st.selectbox("Beta blocker", ["No", "Yes"])
+        inputs['Cardiotonics']        = st.selectbox("Cardiotonics", ["No", "Yes"])
+        inputs['Statins']             = st.selectbox("Statins", ["No", "Yes"])
         # Numeric options for Stent_for_IRA
         inputs['Stent_for_IRA']       = st.selectbox("Stent for IRA", [0, 1, 2])
         submitted = st.form_submit_button("Predict Risk")
